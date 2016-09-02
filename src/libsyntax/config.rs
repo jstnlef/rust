@@ -8,15 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use attr::HasAttrs;
+use attr::{self, HasAttrs};
 use feature_gate::{emit_feature_err, EXPLAIN_STMT_ATTR_SYNTAX, Features, get_features, GateIssue};
-use {fold, attr};
 use ast;
 use codemap::{Spanned, respan};
-use parse::{ParseSess, token};
+use parse::ParseSess;
 use ptr::P;
-
-use util::small_vector::SmallVector;
 
 /// A folder that strips out items that do not belong in the current configuration.
 pub struct StripUnconfigured<'a> {
@@ -61,7 +58,7 @@ pub fn features(mut krate: ast::Crate, sess: &ParseSess, should_test: bool)
 }
 
 impl<'a> StripUnconfigured<'a> {
-    fn configure<T: HasAttrs>(&mut self, node: T) -> Option<T> {
+    pub fn configure<T: HasAttrs>(&mut self, node: T) -> Option<T> {
         let node = self.process_cfg_attrs(node);
         if self.in_cfg(node.attrs()) { Some(node) } else { None }
     }
@@ -157,7 +154,7 @@ impl<'a> StripUnconfigured<'a> {
         }
     }
 
-    fn configure_foreign_mod(&mut self, foreign_mod: ast::ForeignMod) -> ast::ForeignMod {
+    pub fn configure_foreign_mod(&mut self, foreign_mod: ast::ForeignMod) -> ast::ForeignMod {
         ast::ForeignMod {
             abi: foreign_mod.abi,
             items: foreign_mod.items.into_iter().filter_map(|item| self.configure(item)).collect(),
@@ -178,7 +175,7 @@ impl<'a> StripUnconfigured<'a> {
         }
     }
 
-    fn configure_item_kind(&mut self, item: ast::ItemKind) -> ast::ItemKind {
+    pub fn configure_item_kind(&mut self, item: ast::ItemKind) -> ast::ItemKind {
         match item {
             ast::ItemKind::Struct(def, generics) => {
                 ast::ItemKind::Struct(self.configure_variant_data(def), generics)
@@ -208,7 +205,7 @@ impl<'a> StripUnconfigured<'a> {
         }
     }
 
-    fn configure_expr_kind(&mut self, expr_kind: ast::ExprKind) -> ast::ExprKind {
+    pub fn configure_expr_kind(&mut self, expr_kind: ast::ExprKind) -> ast::ExprKind {
         if let ast::ExprKind::Match(m, arms) = expr_kind {
             let arms = arms.into_iter().filter_map(|a| self.configure(a)).collect();
             ast::ExprKind::Match(m, arms)
@@ -217,7 +214,7 @@ impl<'a> StripUnconfigured<'a> {
         }
     }
 
-    fn configure_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
+    pub fn configure_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
         self.visit_stmt_or_expr_attrs(expr.attrs());
 
         // If an expr is valid to cfg away it will have been removed by the
@@ -235,84 +232,9 @@ impl<'a> StripUnconfigured<'a> {
         self.process_cfg_attrs(expr)
     }
 
-    fn configure_stmt(&mut self, stmt: ast::Stmt) -> Option<ast::Stmt> {
+    pub fn configure_stmt(&mut self, stmt: ast::Stmt) -> Option<ast::Stmt> {
         self.visit_stmt_or_expr_attrs(stmt.attrs());
         self.configure(stmt)
-    }
-}
-
-impl<'a> fold::Folder for StripUnconfigured<'a> {
-    fn fold_foreign_mod(&mut self, foreign_mod: ast::ForeignMod) -> ast::ForeignMod {
-        let foreign_mod = self.configure_foreign_mod(foreign_mod);
-        fold::noop_fold_foreign_mod(foreign_mod, self)
-    }
-
-    fn fold_item_kind(&mut self, item: ast::ItemKind) -> ast::ItemKind {
-        let item = self.configure_item_kind(item);
-        fold::noop_fold_item_kind(item, self)
-    }
-
-    fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
-        let mut expr = self.configure_expr(expr).unwrap();
-        expr.node = self.configure_expr_kind(expr.node);
-
-        P(fold::noop_fold_expr(expr, self))
-    }
-
-    fn fold_opt_expr(&mut self, expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
-        let mut expr = match self.configure(expr) {
-            Some(expr) => expr.unwrap(),
-            None => return None,
-        };
-        expr.node = self.configure_expr_kind(expr.node);
-
-        Some(P(fold::noop_fold_expr(expr, self)))
-    }
-
-    fn fold_stmt(&mut self, stmt: ast::Stmt) -> SmallVector<ast::Stmt> {
-        let stmt = match self.configure_stmt(stmt) {
-            Some(stmt) => stmt,
-            None => return SmallVector::zero(),
-        };
-
-        fold::noop_fold_stmt(stmt, self)
-    }
-
-    fn fold_mac(&mut self, mac: ast::Mac) -> ast::Mac {
-        fold::noop_fold_mac(mac, self)
-    }
-
-    fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
-        let item = match self.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
-
-        fold::noop_fold_item(item, self)
-    }
-
-    fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVector<ast::ImplItem> {
-        let item = match self.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
-
-        fold::noop_fold_impl_item(item, self)
-    }
-
-    fn fold_trait_item(&mut self, item: ast::TraitItem) -> SmallVector<ast::TraitItem> {
-        let item = match self.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
-
-        fold::noop_fold_trait_item(item, self)
-    }
-
-    fn fold_interpolated(&mut self, nt: token::Nonterminal) -> token::Nonterminal {
-        // Don't configure interpolated AST (c.f. #34171).
-        // Interpolated AST will get configured once the surrounding tokens are parsed.
-        nt
     }
 }
 
