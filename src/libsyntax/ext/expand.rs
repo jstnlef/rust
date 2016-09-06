@@ -498,6 +498,15 @@ impl<'a, 'b> InvocationCollector<'a, 'b> {
     }
 }
 
+macro_rules! configure {
+    ($this:ident, $node:ident) => {
+        match $this.cfg.configure($node) {
+            Some(node) => node,
+            None => return Default::default(),
+        }
+    }
+}
+
 impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     fn fold_expr(&mut self, expr: P<ast::Expr>) -> P<ast::Expr> {
         let mut expr = self.cfg.configure_expr(expr).unwrap();
@@ -511,10 +520,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     }
 
     fn fold_opt_expr(&mut self, expr: P<ast::Expr>) -> Option<P<ast::Expr>> {
-        let mut expr = match self.cfg.configure(expr) {
-            Some(expr) => expr.unwrap(),
-            None => return None,
-        };
+        let mut expr = configure!(self, expr).unwrap();
         expr.node = self.cfg.configure_expr_kind(expr.node);
 
         if let ast::ExprKind::Mac(mac) = expr.node {
@@ -539,10 +545,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     }
 
     fn fold_stmt(&mut self, stmt: ast::Stmt) -> SmallVector<ast::Stmt> {
-        let stmt = match self.cfg.configure_stmt(stmt) {
-            Some(stmt) => stmt,
-            None => return SmallVector::zero(),
-        };
+        let stmt = configure!(self, stmt);
 
         let (mac, style, attrs) = match stmt.node {
             StmtKind::Mac(mac) => mac.unwrap(),
@@ -573,10 +576,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     }
 
     fn fold_item(&mut self, item: P<ast::Item>) -> SmallVector<P<ast::Item>> {
-        let item = match self.cfg.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
+        let item = configure!(self, item);
 
         let (item, attr) = self.classify_item(item);
         if let Some(attr) = attr {
@@ -652,10 +652,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     }
 
     fn fold_trait_item(&mut self, item: ast::TraitItem) -> SmallVector<ast::TraitItem> {
-        let item = match self.cfg.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
+        let item = configure!(self, item);
 
         let (item, attr) = self.classify_item(item);
         if let Some(attr) = attr {
@@ -673,10 +670,7 @@ impl<'a, 'b> Folder for InvocationCollector<'a, 'b> {
     }
 
     fn fold_impl_item(&mut self, item: ast::ImplItem) -> SmallVector<ast::ImplItem> {
-        let item = match self.cfg.configure(item) {
-            Some(item) => item,
-            None => return SmallVector::zero(),
-        };
+        let item = configure!(self, item);
 
         let (item, attr) = self.classify_item(item);
         if let Some(attr) = attr {
